@@ -101,7 +101,7 @@ module fir
             len_reg <= 3'b000;
         end else begin
             if (len_EN) begin
-	        if (len_WE[0]) begin
+	            if (len_WE[0]) begin
                     len_reg[7:0]   <= len_Di[7:0];
                 end
                 if (len_WE[1]) begin
@@ -112,6 +112,37 @@ module fir
                 end
                 if (len_WE[3]) begin
                     len_reg[31:24] <= len_Di[31:24];
+                end
+            end
+        end
+    end
+
+
+    // Length Configuration Register
+    wire [3:0]                       num_WE;
+    wire                             num_EN;
+    wire [(pDATA_WIDTH-1):0]         num_Di;
+    wire                             num_Do;
+    reg  [(pDATA_WIDTH-1):0]         num_reg;
+
+    assign num_Do = {pDATA_WIDTH{num_EN}} & num_reg;
+
+    always @(posedge axis_clk or negedge axis_rst_n) begin
+        if (~axis_rst_n) begin
+            num_reg <= 3'b000;
+        end else begin
+            if (len_EN) begin
+	            if (len_WE[0]) begin
+                    num_reg[7:0]   <= num_Di[7:0];
+                end
+                if (len_WE[1]) begin
+                    num_reg[15:8]  <= num_Di[15:8];
+                end
+                if (len_WE[2]) begin
+                    num_reg[23:16] <= num_Di[23:16];
+                end
+                if (len_WE[3]) begin
+                    num_reg[31:24] <= num_Di[31:24];
                 end
             end
         end
@@ -133,7 +164,8 @@ module fir
     reg  [1:0]                       axilite_fsm;
     reg  [(pADDR_WIDTH-1):0]         axilite_A;
     wire                             axilite_ap;
-    wire                             axilite_data;
+    wire                             axilite_len;
+    wire                             axilite_num;
     wire                             axilite_tap;
     wire [(pDATA_WIDTH-1):0]         axilite_Do;
 
@@ -362,11 +394,13 @@ module fir
     end
 
     assign axilite_ap      = (axilite_fsm != AXILITE_FSM_IDLE) & (axilite_A == {pADDR_WIDTH{1'b0}});
-    assign axilite_len     = (axilite_fsm != AXILITE_FSM_IDLE) & (axilite_A >= {{pADDR_WIDTH-5{1'b0}},5'h10}) & (axilite_A <= {{pADDR_WIDTH-5{1'b0}},5'h14});
-    assign axilite_tap     = (axilite_fsm != AXILITE_FSM_IDLE) & (axilite_A >= {{pADDR_WIDTH-6{1'b0}},6'h20}) & (axilite_A <= {{pADDR_WIDTH-8{1'b0}},8'hFF});
+    assign axilite_len     = (axilite_fsm != AXILITE_FSM_IDLE) & (axilite_A >= {{pADDR_WIDTH-5{1'b0}},5'h10}) & (axilite_A <= {{pADDR_WIDTH-5{1'b0}},5'h13});
+    assign axilite_num     = (axilite_fsm != AXILITE_FSM_IDLE) & (axilite_A >= {{pADDR_WIDTH-5{1'b0}},5'h14}) & (axilite_A <= {{pADDR_WIDTH-5{1'b0}},5'h18});
+    assign axilite_tap     = (axilite_fsm != AXILITE_FSM_IDLE) & (axilite_A >= {{pADDR_WIDTH-8{1'b0}},8'h80}) & (axilite_A <= {{pADDR_WIDTH-8{1'b0}},8'hFF});
     assign axilite_Do      = {pDATA_WIDTH{axilite_ap  & ~axistream_ap }} & ap_Do               |
                              {pDATA_WIDTH{axilite_ap  &  axistream_ap }} & 3'b000              |
                              {pDATA_WIDTH{axilite_len                 }} & len_Do              |
+                             {pDATA_WIDTH{axilite_num                 }} & num_Do              |                          
                              {pDATA_WIDTH{axilite_tap & ~axistream_tap}} & tap_Do              |
                              {pDATA_WIDTH{axilite_tap &  axistream_tap}} & {pDATA_WIDTH{1'b1}};
 
@@ -389,10 +423,14 @@ module fir
     assign len_EN          = axilite_len & (rvalid | wready & wvalid);
     assign len_Di          = wdata;
 
+    assign num_WE          = {4{axilite_num & (wready & wvalid)}} & we_sel;
+    assign num_EN          = axilite_num & (rvalid | wready & wvalid);
+    assign num_Di          = wdata;
+
     assign tap_WE          = {4{axilite_tap & (wready & wvalid) & ~axistream_tap}} & we_sel;
     assign tap_EN          = axilite_tap & (rvalid | wready & wvalid) | axistream_tap;
     assign tap_Di          = wdata;
-    assign tap_A           = {pADDR_WIDTH{axilite_tap & ~axistream_tap}} & (axilite_A - {{pADDR_WIDTH-6{1'b0}},6'h20}) |
+    assign tap_A           = {pADDR_WIDTH{axilite_tap & ~axistream_tap}} & (axilite_A - {{pADDR_WIDTH-8{1'b0}},8'h80}) |
                              {pADDR_WIDTH{               axistream_tap}} & axistream_tap_A;
 
     assign data_WE         = {4{(axistream_fsm == AXISTREAM_FSM_INIT) | (axistream_fsm == AXISTREAM_FSM_MULT) & (axistream_A != {pADDR_WIDTH{1'b0}})}} & we_sel;
