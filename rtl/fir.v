@@ -49,18 +49,18 @@ module fir
 
     assign we_sel[0]   = (pDATA_WIDTH >= 1);
     assign we_sel[1]   = (pDATA_WIDTH >= 9);
-    assign we_sel[0]   = (pDATA_WIDTH >= 17);
-    assign we_sel[1]   = (pDATA_WIDTH >= 25);
+    assign we_sel[2]   = (pDATA_WIDTH >= 17);
+    assign we_sel[3]   = (pDATA_WIDTH >= 25);
 
 
     // AP Configuration Register
     wire                             ap_WE;
     wire                             ap_EN;
     wire [2:0]                       ap_Di;
-    wire                             ap_Do;
+    wire [(pDATA_WIDTH-1):0]         ap_Do;
     reg  [2:0]                       ap_reg;
 
-    assign ap_Do = {pDATA_WIDTH{ap_EN}} & {pDATA_WIDTH-3{1'b0}, ap_reg};
+    assign ap_Do = {pDATA_WIDTH{ap_EN}} & {{pDATA_WIDTH-3{1'b0}}, ap_reg};
 
     always @(posedge axis_clk or negedge axis_rst_n) begin
         if (~axis_rst_n) begin
@@ -72,8 +72,10 @@ module fir
                         ap_reg <= {ap_Di[2], 1'b0, ap_Di[0]};
                     end else begin
                         ap_reg <= {ap_reg[2], 1'b0, ap_reg[0]};
+                    end
                 end else begin
                     ap_reg <= ap_reg;
+                end
             end else begin
                 if (ap_WE & ap_EN) begin
                     ap_reg <= ap_Di;
@@ -119,7 +121,8 @@ module fir
     // AXI-Lite and AXI-Stream FSM
     parameter AXILITE_FSM_IDLE     = 2'b00;
     parameter AXILITE_FSM_ARREADY  = 2'b01;
-    parameter AXILITE_FSM_AWREADY  = 2'b10;
+    parameter AXILITE_FSM_RREADY   = 2'b10;
+    parameter AXILITE_FSM_AWREADY  = 2'b11;
     parameter AXISTREAM_FSM_IDLE   = 3'b000;
     parameter AXISTREAM_FSM_INIT   = 3'b001;
     parameter AXISTREAM_FSM_UPDATE = 3'b010;
@@ -145,47 +148,51 @@ module fir
     wire                             axistream_ap;
     wire                             axistream_tap;
     wire [(pADDR_WIDTH-1):0]         axistream_tap_A;
-    
+
+    // AXI-Lite
     always @(posedge axis_clk or negedge axis_rst_n) begin
         if (~axis_rst_n) begin
             axilite_fsm <= AXILITE_FSM_IDLE;
-            axilite_A   <= pADDR_WIDTH'b0;
+            axilite_A   <= {pADDR_WIDTH{1'b0}};
         end else begin
             case (axilite_fsm)
                 AXILITE_FSM_IDLE: begin
-                    if (arvalid) begin
+                    if (arvalid & (~awvalid | awvalid & (awaddr == {pADDR_WIDTH{1'b0}}) & (axistream_fsm != AXISTREAM_FSM_IDLE))) begin
                         axilite_fsm <= AXILITE_FSM_ARREADY;
                         axilite_A   <= araddr;
-                    if (awvalid) begin
+                    end else if (awvalid) begin
                         axilite_fsm <= AXILITE_FSM_AWREADY;
                         axilite_A   <= awaddr;
                     end else begin
                         axilite_fsm <= AXILITE_FSM_IDLE;
-                        axilite_A   <= pADDR_WIDTH'b0;
+                        axilite_A   <= {pADDR_WIDTH{1'b0}};
                     end
                 end
                 AXILITE_FSM_ARREADY: begin
                     if (rready) begin
-                        axilite_fsm <= AXILITE_FSM_IDLE;
-                        axilite_Di  <= pDATA_WIDTH'b0;
-                        axilite_A   <= pADDR_WIDTH'b0;
+                        axilite_fsm <= AXILITE_FSM_RREADY;
+                        axilite_A   <= axilite_A;
                     end else begin
                         axilite_fsm <= AXILITE_FSM_ARREADY;
-                        axilite_A   <= A_reg;
+                        axilite_A   <= axilite_A;
                     end
+                end
+                AXILITE_FSM_RREADY: begin
+                    axilite_fsm <= AXILITE_FSM_IDLE;
+                    axilite_A   <= {pADDR_WIDTH{1'b0}};
                 end
                 AXILITE_FSM_AWREADY: begin
                     if (wvalid) begin
                         axilite_fsm <= AXILITE_FSM_IDLE;
-                        axilite_A   <= pADDR_WIDTH'b0;
+                        axilite_A   <= {pADDR_WIDTH{1'b0}};
                     end else begin
                         axilite_fsm <= AXILITE_FSM_AWREADY;
-                        axilite_A   <= A_reg;
+                        axilite_A   <= axilite_A;
                     end
                 end
                 default: begin
                     axilite_fsm <= AXILITE_FSM_IDLE;
-                    axilite_A   <= pADDR_WIDTH'b0;
+                    axilite_A   <= {pADDR_WIDTH{1'b0}};
                 end
             endcase
         end
@@ -195,66 +202,65 @@ module fir
     always @(posedge axis_clk or negedge axis_rst_n) begin
         if (~axis_rst_n) begin
             axistream_fsm     <= AXISTREAM_FSM_IDLE;
-            axistream_A       <= pADDR_WIDTH'h0;
-            axistream_tap_Do  <= pDATA_WIDTH'h0;
-            axistream_data_Di <= pDATA_WIDTH'h0;
-            axistream_data_Do <= pDATA_WIDTH'h0;
-            axistream_mult    <= pDATA_WIDTH'h0;
-            axistream_sum     <= pDATA_WIDTH'h0;
+            axistream_A       <= {pADDR_WIDTH{1'b0}};
+            axistream_tap_Do  <= {pDATA_WIDTH{1'b0}};
+            axistream_data_Di <= {pDATA_WIDTH{1'b0}};
+            axistream_mult    <= {pDATA_WIDTH{1'b0}};
+            axistream_sum     <= {pDATA_WIDTH{1'b0}};
             axistream_last    <= 1'b0;
         end else begin
             case (axistream_fsm)
                 AXISTREAM_FSM_IDLE: begin
-                    if (ap_reg[0] & ss_tvalid) begin
+                    if (~axilite_ap & ap_reg[0] & ss_tvalid) begin
                         axistream_fsm     <= AXISTREAM_FSM_INIT;
-                        axistream_A       <= pADDR_WIDTH'h0;
-                        axistream_tap_Do  <= pDATA_WIDTH'h0;
-                        axistream_data_Di <= pDATA_WIDTH'h0;
-                        axistream_data_Do <= pDATA_WIDTH'h0;
-                        axistream_mult    <= pDATA_WIDTH'h0;
-                        axistream_sum     <= pDATA_WIDTH'h0;
+                        axistream_A       <= Tape_Num - 1;
+                        axistream_tap_Do  <= {pDATA_WIDTH{1'b0}};
+                        axistream_data_Di <= {pDATA_WIDTH{1'b0}};
+                        axistream_data_Do <= {pDATA_WIDTH{1'b0}};
+                        axistream_mult    <= {pDATA_WIDTH{1'b0}};
+                        axistream_sum     <= {pDATA_WIDTH{1'b0}};
                         axistream_last    <= ss_tlast;
                     end else begin
                         axistream_fsm     <= AXISTREAM_FSM_IDLE;
-                        axistream_A       <= pADDR_WIDTH'h0;
-                        axistream_tap_Do  <= pDATA_WIDTH'h0;
-                        axistream_data_Di <= pDATA_WIDTH'h0;
-                        axistream_data_Do <= pDATA_WIDTH'h0;
-                        axistream_mult    <= pDATA_WIDTH'h0;
-                        axistream_sum     <= pDATA_WIDTH'h0;
+                        axistream_A       <= {pADDR_WIDTH{1'b0}};
+                        axistream_tap_Do  <= {pDATA_WIDTH{1'b0}};
+                        axistream_data_Di <= {pDATA_WIDTH{1'b0}};
+                        axistream_data_Do <= {pDATA_WIDTH{1'b0}};
+                        axistream_mult    <= {pDATA_WIDTH{1'b0}};
+                        axistream_sum     <= {pDATA_WIDTH{1'b0}};
                         axistream_last    <= 1'b0;
                     end
                 end
                 AXISTREAM_FSM_INIT: begin
-                    if (axistream_A != (Tape_Num - 2)) begin
+                    if (axistream_A != {pADDR_WIDTH{1'b0}}) begin
                         axistream_fsm     <= AXISTREAM_FSM_INIT;
-                        axistream_A       <= axistream_A + pADDR_WIDTH'b1;
-                        axistream_tap_Do  <= pDATA_WIDTH'h0;
-                        axistream_data_Di <= pDATA_WIDTH'h0;
-                        axistream_data_Do <= pDATA_WIDTH'h0;
-                        axistream_mult    <= pDATA_WIDTH'h0;
-                        axistream_sum     <= pDATA_WIDTH'h0;
+                        axistream_A       <= axistream_A - {{pADDR_WIDTH-1{1'b0}}, 1'b1};
+                        axistream_tap_Do  <= {pDATA_WIDTH{1'b0}};
+                        axistream_data_Di <= {pDATA_WIDTH{1'b0}};
+                        axistream_data_Do <= {pDATA_WIDTH{1'b0}};
+                        axistream_mult    <= {pDATA_WIDTH{1'b0}};
+                        axistream_sum     <= {pDATA_WIDTH{1'b0}};
                         axistream_last    <= axistream_last;
                     end else begin
                         axistream_fsm     <= AXISTREAM_FSM_UPDATE;
-                        axistream_A       <= pADDR_WIDTH'h0;
-                        axistream_tap_Do  <= pDATA_WIDTH'h0;
-                        axistream_data_Di <= pDATA_WIDTH'h0;
-                        axistream_data_Do <= pDATA_WIDTH'h0;
-                        axistream_mult    <= pDATA_WIDTH'h0;
-                        axistream_sum     <= pDATA_WIDTH'h0;
+                        axistream_A       <= {pADDR_WIDTH{1'b0}};
+                        axistream_tap_Do  <= {pDATA_WIDTH{1'b0}};
+                        axistream_data_Di <= {pDATA_WIDTH{1'b0}};
+                        axistream_data_Do <= {pDATA_WIDTH{1'b0}};
+                        axistream_mult    <= {pDATA_WIDTH{1'b0}};
+                        axistream_sum     <= {pDATA_WIDTH{1'b0}};
                         axistream_last    <= axistream_last;
                     end
                 end
                 AXISTREAM_FSM_UPDATE: begin
-                    if (axistream_A == 0) begin
+                    if (axistream_A == {pADDR_WIDTH{1'b0}}) begin
                         axistream_fsm     <= AXISTREAM_FSM_MULT;
-                        axistream_A       <= pADDR_WIDTH'h0;
+                        axistream_A       <= {pADDR_WIDTH{1'b0}};
                         axistream_tap_Do  <= tap_Do;
-                        axistream_data_Di <= pDATA_WIDTH'h0;
+                        axistream_data_Di <= {pDATA_WIDTH{1'b0}};
                         axistream_data_Do <= ss_tdata;
-                        axistream_mult    <= pDATA_WIDTH'h0;
-                        axistream_sum     <= pDATA_WIDTH'h0;
+                        axistream_mult    <= {pDATA_WIDTH{1'b0}};
+                        axistream_sum     <= {pDATA_WIDTH{1'b0}};
                         axistream_last    <= axistream_last;
                     end else begin
                         axistream_fsm     <= AXISTREAM_FSM_MULT;
@@ -262,16 +268,16 @@ module fir
                         axistream_tap_Do  <= tap_Do;
                         axistream_data_Di <= axistream_data_Do;
                         axistream_data_Do <= data_Do;
-                        axistream_mult    <= pDATA_WIDTH'h0;
+                        axistream_mult    <= {pDATA_WIDTH{1'b0}};
                         axistream_sum     <= axistream_sum;
                         axistream_last    <= axistream_last;
                     end
                 end
                 AXISTREAM_FSM_MULT: begin
                     axistream_fsm     <= AXISTREAM_FSM_SUM;
-                    axistream_A       <= axistream_A + pADDR_WIDTH'b1;
+                    axistream_A       <= axistream_A + {{pADDR_WIDTH-1{1'b0}}, 1'b1};
                     axistream_tap_Do  <= axistream_tap_Do;
-                    axistream_data_Di <= pDATA_WIDTH'h0;
+                    axistream_data_Di <= {pDATA_WIDTH{1'b0}};
                     axistream_data_Do <= axistream_data_Do;
                     axistream_mult    <= axistream_tap_Do * axistream_data_Do;
                     axistream_sum     <= axistream_sum;
@@ -280,60 +286,62 @@ module fir
                 AXISTREAM_FSM_SUM: begin
                     if (axistream_A == Tape_Num) begin
                         axistream_fsm     <= AXISTREAM_FSM_OUT;
-                        axistream_A       <= pADDR_WIDTH'h0;
-                        axistream_tap_Do  <= pDATA_WIDTH'h0;
-                        axistream_data_Di <= pDATA_WIDTH'h0;
-                        axistream_data_Do <= pDATA_WIDTH'h0;
-                        axistream_mult    <= pDATA_WIDTH'h0;
+                        axistream_A       <= {pADDR_WIDTH{1'b0}};
+                        axistream_tap_Do  <= {pDATA_WIDTH{1'b0}};
+                        axistream_data_Di <= {pDATA_WIDTH{1'b0}};
+                        axistream_data_Do <= {pDATA_WIDTH{1'b0}};
+                        axistream_mult    <= {pDATA_WIDTH{1'b0}};
                         axistream_sum     <= axistream_sum + axistream_mult;
                         axistream_last    <= axistream_last;
                     end else begin
                         axistream_fsm     <= AXISTREAM_FSM_UPDATE;
                         axistream_A       <= axistream_A;
                         axistream_tap_Do  <= axistream_tap_Do;
-                        axistream_data_Di <= pDATA_WIDTH'h0;
+                        axistream_data_Di <= {pDATA_WIDTH{1'b0}};
                         axistream_data_Do <= axistream_data_Do;
-                        axistream_mult    <= pDATA_WIDTH'h0;
+                        axistream_mult    <= {pDATA_WIDTH{1'b0}};
                         axistream_sum     <= axistream_sum + axistream_mult;
                         axistream_last    <= axistream_last;
+                    end
                 end
                 AXISTREAM_FSM_OUT: begin
                     if (axistream_last) begin
                         if (sm_tready) begin
                             axistream_fsm     <= AXISTREAM_FSM_IDLE;
-                            axistream_A       <= pADDR_WIDTH'h0;
-                            axistream_tap_Do  <= pDATA_WIDTH'h0;
-                            axistream_data_Di <= pDATA_WIDTH'h0;
-                            axistream_data_Do <= pDATA_WIDTH'h0;
-                            axistream_mult    <= pDATA_WIDTH'h0;
-                            axistream_sum     <= pDATA_WIDTH'h0;
+                            axistream_A       <= {pADDR_WIDTH{1'b0}};
+                            axistream_tap_Do  <= {pDATA_WIDTH{1'b0}};
+                            axistream_data_Di <= {pDATA_WIDTH{1'b0}};
+                            axistream_data_Do <= {pDATA_WIDTH{1'b0}};
+                            axistream_mult    <= {pDATA_WIDTH{1'b0}};
+                            axistream_sum     <= {pDATA_WIDTH{1'b0}};
                             axistream_last    <= 1'b0;
-                        end else begin begin
+                        end else begin
                             axistream_fsm     <= AXISTREAM_FSM_OUT;
-                            axistream_A       <= pADDR_WIDTH'h0;
-                            axistream_tap_Do  <= pDATA_WIDTH'h0;
-                            axistream_data_Di <= pDATA_WIDTH'h0;
-                            axistream_data_Do <= pDATA_WIDTH'h0;
-                            axistream_mult    <= pDATA_WIDTH'h0;
+                            axistream_A       <= {pADDR_WIDTH{1'b0}};
+                            axistream_tap_Do  <= {pDATA_WIDTH{1'b0}};
+                            axistream_data_Di <= {pDATA_WIDTH{1'b0}};
+                            axistream_data_Do <= {pDATA_WIDTH{1'b0}};
+                            axistream_mult    <= {pDATA_WIDTH{1'b0}};
                             axistream_sum     <= axistream_sum;
                             axistream_last    <= axistream_last;
+                        end
                     end else begin
                         if (ss_tvalid & sm_tready) begin
                             axistream_fsm     <= AXISTREAM_FSM_UPDATE;
-                            axistream_A       <= pADDR_WIDTH'h0;
-                            axistream_tap_Do  <= pDATA_WIDTH'h0;
-                            axistream_data_Di <= pDATA_WIDTH'h0;
-                            axistream_data_Do <= pDATA_WIDTH'h0;
-                            axistream_mult    <= pDATA_WIDTH'h0;
-                            axistream_sum     <= pDATA_WIDTH'h0;
+                            axistream_A       <= {pADDR_WIDTH{1'b0}};
+                            axistream_tap_Do  <= {pDATA_WIDTH{1'b0}};
+                            axistream_data_Di <= {pDATA_WIDTH{1'b0}};
+                            axistream_data_Do <= {pDATA_WIDTH{1'b0}};
+                            axistream_mult    <= {pDATA_WIDTH{1'b0}};
+                            axistream_sum     <= {pDATA_WIDTH{1'b0}};
                             axistream_last    <= ss_tlast;
-                        end else begin begin
+                        end else begin
                             axistream_fsm     <= AXISTREAM_FSM_OUT;
-                            axistream_A       <= pADDR_WIDTH'h0;
-                            axistream_tap_Do  <= pDATA_WIDTH'h0;
-                            axistream_data_Di <= pDATA_WIDTH'h0;
-                            axistream_data_Do <= pDATA_WIDTH'h0;
-                            axistream_mult    <= pDATA_WIDTH'h0;
+                            axistream_A       <= {pADDR_WIDTH{1'b0}};
+                            axistream_tap_Do  <= {pDATA_WIDTH{1'b0}};
+                            axistream_data_Di <= {pDATA_WIDTH{1'b0}};
+                            axistream_data_Do <= {pDATA_WIDTH{1'b0}};
+                            axistream_mult    <= {pDATA_WIDTH{1'b0}};
                             axistream_sum     <= axistream_sum;
                             axistream_last    <= axistream_last;
                         end
@@ -341,58 +349,61 @@ module fir
                 end
                 default: begin
                     axistream_fsm     <= AXISTREAM_FSM_IDLE;
-                    axistream_A       <= pADDR_WIDTH'h0;
-                    axistream_tap_Do  <= pDATA_WIDTH'h0;
-                    axistream_data_Di <= pDATA_WIDTH'h0;
-                    axistream_data_Do <= pDATA_WIDTH'h0;
-                    axistream_mult    <= pDATA_WIDTH'h0;
-                    axistream_sum     <= pDATA_WIDTH'h0;
+                    axistream_A       <= {pADDR_WIDTH{1'b0}};
+                    axistream_tap_Do  <= {pDATA_WIDTH{1'b0}};
+                    axistream_data_Di <= {pDATA_WIDTH{1'b0}};
+                    axistream_data_Do <= {pDATA_WIDTH{1'b0}};
+                    axistream_mult    <= {pDATA_WIDTH{1'b0}};
+                    axistream_sum     <= {pDATA_WIDTH{1'b0}};
                     axistream_last    <= 1'b0;
                end
             endcase
         end
     end
 
-    assign axilite_ap      = (axilite_fsm != AXILITE_FSM_IDLE) & (axilite_A == pADDR_WIDTH'h0);
-    assign axilite_len     = (axilite_fsm != AXILITE_FSM_IDLE) & (axilite_A >= pADDR_WIDTH'h10) & (axilite_A <= pADDR_WIDTH'h14);
-    assign axilite_tap     = (axilite_fsm != AXILITE_FSM_IDLE) & (axilite_A >= pADDR_WIDTH'h20) & (axilite_A <= pADDR_WIDTH'hFF);
+    assign axilite_ap      = (axilite_fsm != AXILITE_FSM_IDLE) & (axilite_A == {pADDR_WIDTH{1'b0}});
+    assign axilite_len     = (axilite_fsm != AXILITE_FSM_IDLE) & (axilite_A >= {{pADDR_WIDTH-5{1'b0}},5'h10}) & (axilite_A <= {{pADDR_WIDTH-5{1'b0}},5'h14});
+    assign axilite_tap     = (axilite_fsm != AXILITE_FSM_IDLE) & (axilite_A >= {{pADDR_WIDTH-6{1'b0}},6'h20}) & (axilite_A <= {{pADDR_WIDTH-8{1'b0}},8'hFF});
     assign axilite_Do      = {pDATA_WIDTH{axilite_ap  & ~axistream_ap }} & ap_Do               |
                              {pDATA_WIDTH{axilite_ap  &  axistream_ap }} & 3'b000              |
                              {pDATA_WIDTH{axilite_len                 }} & len_Do              |
-                             {pDATA_WIDTH{axilite_tag & ~axistream_tap}} & tap_Do              |
-                             {pDATA_WIDTH{axilite_tag &  axistream_tap}} & {pDATA_WIDTH{1'b1}};
+                             {pDATA_WIDTH{axilite_tap & ~axistream_tap}} & tap_Do              |
+                             {pDATA_WIDTH{axilite_tap &  axistream_tap}} & {pDATA_WIDTH{1'b1}};
 
-    assign axistream_ap    = (axistream_fsm == AXISTREAM_FSM_IDLE) & ap_reg[0] & ss_tvalid | (axistream_fsm == AXISTREAM_FSM_OUT) & axistream_last & sm_tready;
-    assign axistream_tap   = (axistream_fsm == AXISTREAM_FSM_IDLE) & ap_reg[0] & ss_tvalid | (axistream_fsm != AXISTREAM_FSM_IDLE);
-    assign axistream_tap_A = (axistream_fsm == AXISTREAM_FSM_IDLE | axistream_fsm == AXISTREAM_FSM_INIT) ? pADDR_WIDTH'h0 : (axistream_A << 2);
+    assign axistream_ap    = (axistream_fsm == AXISTREAM_FSM_IDLE) & ~axilite_ap & ap_reg[0] & ss_tvalid | (axistream_fsm == AXISTREAM_FSM_OUT) & axistream_last & sm_tready;
+    assign axistream_tap   = (axistream_fsm == AXISTREAM_FSM_IDLE) & ~axilite_ap & ap_reg[0] & ss_tvalid | (axistream_fsm != AXISTREAM_FSM_IDLE);
+    assign axistream_tap_A = (axistream_fsm == AXISTREAM_FSM_IDLE | axistream_fsm == AXISTREAM_FSM_INIT) ? {pADDR_WIDTH{1'b0}} : (axistream_A << 2);
 
-    assign awready         = (axilite_fsm == AXILITE_FSM_IDLE   ) & awvalid;
+    assign awready         = (axilite_fsm == AXILITE_FSM_IDLE   ) & awvalid & ~(arvalid & (awaddr == {pADDR_WIDTH{1'b0}}) & (axistream_fsm != AXISTREAM_FSM_IDLE));
     assign wready          = (axilite_fsm == AXILITE_FSM_AWREADY);
-    assign arready         = (axilite_fsm == AXILITE_FSM_IDLE   ) & arvalid;
-    assign rvalid          = (axilite_fsm == AXILITE_FSM_ARREADY) & rready;
-    assign rdata           = {pDATA_WIDTH{(axilite_fsm == AXILITE_FSM_ARREADY)}} & axilite_Do;
+    assign arready         = (axilite_fsm == AXILITE_FSM_IDLE   ) & arvalid & (~awvalid | awvalid & (awaddr == {pADDR_WIDTH{1'b0}}) & (axistream_fsm != AXISTREAM_FSM_IDLE));
+    assign rvalid          = (axilite_fsm == AXILITE_FSM_RREADY );
+    assign rdata           = {pDATA_WIDTH{rvalid}} & axilite_Do;
 
     assign ap_WE           = axilite_ap & (wready & wvalid) | axistream_ap;
     assign ap_EN           = axilite_ap & (rvalid | wready & wvalid) | axistream_ap;
     assign ap_Di           = {3{axilite_ap & ~axistream_ap}} & {(ap_reg[2] & ~wdata[0]), 1'b0, (ap_reg[2] & wdata[0])} | 
-                             {3{              axistream_ap}} & {2{sm_tlast}, 1'b0};
+                             {3{              axistream_ap}} & {{2{sm_tlast}}, 1'b0};
 
-    assign len_WE          = axilite_len & (wready & wvalid);
+    assign len_WE          = {4{axilite_len & (wready & wvalid)}} & we_sel;
     assign len_EN          = axilite_len & (rvalid | wready & wvalid);
     assign len_Di          = wdata;
 
-    assign tap_WE          = axilite_tap & (wready & wvalid) & ~axistream_tap;
+    assign tap_WE          = {4{axilite_tap & (wready & wvalid) & ~axistream_tap}} & we_sel;
     assign tap_EN          = axilite_tap & (rvalid | wready & wvalid) | axistream_tap;
     assign tap_Di          = wdata;
-    assign tap_A           = {3{axilite_tap & ~axistream_tap}} & (axilite_A - pADDR_WIDTH'20) |
-                             {3{               axistream_tap}} & axistream_tap_A;
+    assign tap_A           = {pADDR_WIDTH{axilite_tap & ~axistream_tap}} & (axilite_A - {{pADDR_WIDTH-6{1'b0}},6'h20}) |
+                             {pADDR_WIDTH{               axistream_tap}} & axistream_tap_A;
 
-    assign data_WE         = (axistream_fsm == AXISTREAM_FSM_UPDATE) & (axistream_A != pADDR_WIDTH'h0);
-    assign data_EN         = (axistream_fsm == AXISTREAM_FSM_SUM   ) & (axistream_A == Tape_Num      ) | (axistream_fsm == AXISTREAM_FSM_UPDATE) & (axistream_A != pADDR_WIDTH'h0);
+    assign data_WE         = {4{(axistream_fsm == AXISTREAM_FSM_INIT) | (axistream_fsm == AXISTREAM_FSM_MULT) & (axistream_A != {pADDR_WIDTH{1'b0}})}} & we_sel;
+    assign data_EN         = (axistream_fsm == AXISTREAM_FSM_INIT  )                                        | 
+                             (axistream_fsm == AXISTREAM_FSM_UPDATE) & (axistream_A != {pADDR_WIDTH{1'b0}}) | 
+                             (axistream_fsm == AXISTREAM_FSM_MULT  ) & (axistream_A != {pADDR_WIDTH{1'b0}}) ;
     assign data_Di         = axistream_data_Di;
-    assign data_A          = {pADDR_WIDTH{(axistream_A != pADDR_WIDTH'h0)}} & ((axistream_A - pADDR_WIDTH'b1) << 2);
+    assign data_A          = {pADDR_WIDTH{(axistream_fsm == AXISTREAM_FSM_INIT)}} & (axistream_A << 2) |
+                             {pADDR_WIDTH{((axistream_fsm != AXISTREAM_FSM_IDLE) & (axistream_fsm != AXISTREAM_FSM_INIT))}} & ((axistream_A - {{pADDR_WIDTH-1{1'b0}}, 1'b1}) << 2);
 
-    assign ss_tready       = (axistream_fsm == AXISTREAM_FSM_UPDATE) & (axistream_A == pADDR_WIDTH'h0);
+    assign ss_tready       = (axistream_fsm == AXISTREAM_FSM_UPDATE) & (axistream_A == {pADDR_WIDTH{1'b0}});
     assign sm_tvalid       = (axistream_fsm == AXISTREAM_FSM_OUT);
     assign sm_tdata        = axistream_sum;
     assign sm_tlast        = (axistream_fsm == AXISTREAM_FSM_OUT) & axistream_last;
