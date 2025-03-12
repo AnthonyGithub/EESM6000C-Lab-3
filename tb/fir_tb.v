@@ -174,10 +174,6 @@ module fir_tb
             coef_in=$fscanf(coef_data,"%d", coef[n]);
             coef_length = coef_length + 1;
         end
-        for(n=0;n< `Coef_Num ;n=n+1)  begin 
-            coef_in=$fscanf(coef_data,"%d", coef[n]);
-            coef_length = coef_length + 1;
-        end
         
         load_done = 1;
     end
@@ -278,11 +274,11 @@ module fir_tb
             for(i=0;i<(data_length-1);i=i+1) begin
                 ss_tlast = 0;
                 axi_stream_master(Din_list[i]);
-                $display("Inputting data %d...", i);
+                $display("AXI-Stream inputting data %d...", i);
             end
             ss_tlast = 1;
             axi_stream_master(Din_list[(`Data_Num - 1)]);
-            $display("Inputting data %d...", (`Data_Num - 1));
+            $display("AXI-Stream inputting data %d...", (`Data_Num - 1));
             wait(fir_done == 1);
             $display("------End the data input(AXI-Stream)------");
         end
@@ -302,7 +298,7 @@ module fir_tb
                 while(!sm_tready | !sm_tvalid) @(posedge axis_clk);
                 sm_tready <= 0;
                 Do_list[l] <= sm_tdata;
-                $display("Outputting data %d...", l);
+                $display("AXI-Stream outputting data %d...", l);
                 
             end
             wait(fir_done == 1);
