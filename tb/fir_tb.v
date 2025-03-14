@@ -299,7 +299,7 @@ module fir_tb
                 sm_tready <= 0;
                 Do_list[l] <= sm_tdata;
                 $display("AXI-Stream outputting data %d...", l);
-                
+                $display("The throughput is %d cycles", filter_latency);
             end
             wait(fir_done == 1);
             $display("------End the data output(AXI-Stream)------");
@@ -389,35 +389,39 @@ module fir_tb
     task latency_count;
         begin
             while(fir_done == 0) @(posedge axis_clk) begin
-                if (ss_tvalid & !latency_enable) begin
-                    latency = 0;
-                    latency_enable = 1;
-                end else if (sm_tvalid & sm_tlast & latency_enable) begin
-                    latency_enable = 0;
-                end else if ((!sm_tvalid | !sm_tlast) & latency_enable) begin
-                    latency = latency + 1;
+                if (fir_DUT.ap_reg[0] & !latency_enable) begin
+                    latency_enable <= 1;
+                    latency        <= 1;
+                end else if (fir_DUT.ap_reg[1] & latency_enable) begin
+                    latency_enable <= 0;
+                    latency        <= latency;
+                end else if (~fir_DUT.ap_reg[1] & latency_enable) begin
+                    latency_enable <= latency_enable;
+                    latency        <= latency + 1;
                 end else begin
-                    latency_enable = 0;
+                    latency_enable <= 0;
+                    latency        <= latency;
                 end
             end
         end
     endtask
 
     reg filter_latency_enable;
-    integer filter_latency_counter;
     task filter_latency_count;
         begin
             while(fir_done == 0) @(posedge axis_clk) begin
-                if (ss_tvalid & !filter_latency_enable) begin
-                    filter_latency_counter = 0;
-                    filter_latency_enable = 1;
+                if (ss_tvalid & ss_tready & !filter_latency_enable) begin
+                    filter_latency_enable <= 1;
+                    filter_latency        <= 1;
                 end else if (sm_tvalid & filter_latency_enable) begin
-                    filter_latency_enable = 0;
-                    filter_latency = filter_latency_counter + 1;
+                    filter_latency_enable <= 0;
+                    filter_latency        <= filter_latency;
                 end else if (!sm_tvalid & filter_latency_enable) begin
-                    filter_latency_counter = filter_latency_counter + 1;
+                    filter_latency_enable <= filter_latency_enable;
+                    filter_latency        <= filter_latency + 1;
                 end else begin
-                    filter_latency_enable = 0;
+                    filter_latency_enable <= 0;
+                    filter_latency        <= filter_latency;
                 end
             end
         end
@@ -455,18 +459,21 @@ module fir_tb
         input signed [31:0] exp_data;
         input [31:0]        mask;
         begin
-            @(posedge axis_clk);
-            arvalid <= 1; araddr <= addr;
-            rready <= 1;
+            delay_read_addr = $urandom_range(0,5);
+            delay_read_data = $urandom_range(0,5);
             fork 
                 begin
                     @(posedge axis_clk);
-                    while (!arready) @(posedge axis_clk);
+                    #(delay_read_addr * 10) arvalid <= 1; araddr <= addr;
+                    @(posedge axis_clk);
+                    while (!arvalid | (arvalid & !arready)) @(posedge axis_clk);
                     arvalid<=0;
                     araddr<=0;
                 end
                 begin
-                    while (!rvalid) @(posedge axis_clk);
+                    @(posedge axis_clk);
+                    #(delay_read_data * 10) rready <= 1;
+                    while (!rready | (rready & !rvalid)) @(posedge axis_clk);
                     if( (rdata & mask) != (exp_data & mask)) begin
                         $display("ERROR: exp = %d, rdata = %d", exp_data, rdata);
                         error_coef <= 1;
