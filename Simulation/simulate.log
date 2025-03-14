@@ -1834,7 +1834,7 @@ ap_done sampled!
 ------End the data output(AXI-Stream)------
 ------End the data input(AXI-Stream)------
 ------End the illegal tap sampling(AXI-Lite)------
-The latency is       26735 cycles
+The latency is       26736 cycles
 [PASS] [Pattern          0] Golden answer:      -45753, Your answer:      -45753
 [PASS] [Pattern          1] Golden answer:      -14834, Your answer:      -14834
 [PASS] [Pattern          2] Golden answer:      314166, Your answer:      314166
@@ -7259,4 +7259,4 @@ The latency is       26240 cycles
 [PASS] [Pattern        599] Golden answer:     -643815, Your answer:     -643815
 ---------------------------------------------
 -----------Congratulations! Pass-------------
-$finish called at time : 799985 ns : File "/home/ubuntu/Desktop/EESM6000C/lab3_2025/lab3_2025.srcs/sim_1/new/fir_tb.v" Line 268
+$finish called at time : 799985 ns : File "/home/ubuntu/Desktop/EESM6000C/lab3_2025/lab3_2025.srcs/sim_1/new/fir_tb.v" Line 278
