@@ -154,8 +154,9 @@ module fir
     parameter AXILITE_FSM_RESET    = 3'b000;
     parameter AXILITE_FSM_IDLE     = 3'b001;
     parameter AXILITE_FSM_AWREADY  = 3'b010;
-    parameter AXILITE_FSM_ARREADY  = 3'b011;
-    parameter AXILITE_FSM_RREADY   = 3'b100;
+    parameter AXILITE_FSM_WREADY   = 3'b011;
+    parameter AXILITE_FSM_ARREADY  = 3'b100;
+    parameter AXILITE_FSM_RREADY   = 3'b101;
     parameter AXISTREAM_FSM_RESET  = 3'b000;
     parameter AXISTREAM_FSM_IDLE   = 3'b001;
     parameter AXISTREAM_FSM_INIT   = 3'b010;
@@ -165,7 +166,8 @@ module fir
     parameter AXISTREAM_FSM_OUT    = 3'b110;
 
     reg  [2:0]                       axilite_fsm;
-    reg  [(pADDR_WIDTH-1):0]         axilite_A;
+    reg  [(pADDR_WIDTH-1):0]         axilite_A_pre;
+    reg  [(pDATA_WIDTH-1):0]         axilite_Di_pre;
     reg                              axilite_rr;
     wire                             axilite_active;
     wire                             axilite_ap;
@@ -173,6 +175,8 @@ module fir
     wire                             axilite_num;
     wire                             axilite_tap;
     wire [(pDATA_WIDTH-1):0]         axilite_Do;
+    wire [(pADDR_WIDTH-1):0]         axilite_A;
+    wire [(pDATA_WIDTH-1):0]         axilite_Di;
 
     reg  [2:0]                       axistream_fsm;
     reg  [(pADDR_WIDTH-1):0]         axistream_A;
@@ -191,62 +195,91 @@ module fir
     // AXI-Lite
     always @(posedge axis_clk or negedge axis_rst_n) begin
         if (~axis_rst_n) begin
-            axilite_fsm <= AXILITE_FSM_RESET;
-            axilite_A   <= {pADDR_WIDTH{1'b0}};
-            axilite_rr  <= 1'b0;
+            axilite_fsm    <= AXILITE_FSM_RESET;
+            axilite_A_pre  <= {pADDR_WIDTH{1'b0}};
+            axilite_Di_pre <= {pDATA_WIDTH{1'b0}};
+            axilite_rr     <= 1'b0;
         end else begin
             case (axilite_fsm)
                 AXILITE_FSM_RESET: begin
-                    axilite_fsm <= AXILITE_FSM_IDLE;
-                    axilite_A   <= {pADDR_WIDTH{1'b0}};
-                    axilite_rr  <= 1'b0;
+                    axilite_fsm    <= AXILITE_FSM_IDLE;
+                    axilite_A_pre  <= {pADDR_WIDTH{1'b0}};
+                    axilite_Di_pre <= {pDATA_WIDTH{1'b0}};
+                    axilite_rr     <= 1'b0;
                 end
                 AXILITE_FSM_IDLE: begin
                     if (awvalid & ~(arvalid & axilite_rr)) begin
-                        axilite_fsm <= AXILITE_FSM_AWREADY;
-                        axilite_A   <= awaddr;
-                        axilite_rr  <= 1'b1;
+                        axilite_fsm    <= AXILITE_FSM_AWREADY;
+                        axilite_A_pre  <= awaddr;
+                        axilite_Di_pre <= {pDATA_WIDTH{1'b0}};
+                        axilite_rr     <= 1'b1;
+                    end else if (wvalid & ~(arvalid & axilite_rr)) begin
+                        axilite_fsm    <= AXILITE_FSM_WREADY;
+                        axilite_A_pre  <= {pADDR_WIDTH{1'b0}};
+                        axilite_Di_pre <= wdata;
+                        axilite_rr     <= 1'b1;
                     end else if (arvalid) begin
-                        axilite_fsm <= AXILITE_FSM_ARREADY;
-                        axilite_A   <= araddr;
-                        axilite_rr  <= 1'b0;
+                        axilite_fsm    <= AXILITE_FSM_ARREADY;
+                        axilite_A_pre  <= araddr;
+                        axilite_Di_pre <= {pDATA_WIDTH{1'b0}};
+                        axilite_rr     <= 1'b0;
                     end else begin
-                        axilite_fsm <= AXILITE_FSM_IDLE;
-                        axilite_A   <= {pADDR_WIDTH{1'b0}};
-                        axilite_rr  <= axilite_rr;
+                        axilite_fsm    <= AXILITE_FSM_IDLE;
+                        axilite_A_pre  <= {pADDR_WIDTH{1'b0}};
+                        axilite_Di_pre <= {pDATA_WIDTH{1'b0}};
+                        axilite_rr     <= axilite_rr;
                     end
                 end
                 AXILITE_FSM_AWREADY: begin
                     if (wvalid) begin
-                        axilite_fsm <= AXILITE_FSM_IDLE;
-                        axilite_A   <= {pADDR_WIDTH{1'b0}};
-                        axilite_rr  <= axilite_rr;
+                        axilite_fsm    <= AXILITE_FSM_IDLE;
+                        axilite_A_pre  <= {pADDR_WIDTH{1'b0}};
+                        axilite_Di_pre <= {pDATA_WIDTH{1'b0}};
+                        axilite_rr     <= axilite_rr;
                     end else begin
-                        axilite_fsm <= AXILITE_FSM_AWREADY;
-                        axilite_A   <= axilite_A;
-                        axilite_rr  <= axilite_rr;
+                        axilite_fsm    <= AXILITE_FSM_AWREADY;
+                        axilite_A_pre  <= axilite_A;
+                        axilite_Di_pre <= {pDATA_WIDTH{1'b0}};
+                        axilite_rr     <= axilite_rr;
                     end
                 end
+                AXILITE_FSM_WREADY: begin
+                    if (awvalid) begin
+                        axilite_fsm    <= AXILITE_FSM_IDLE;
+                        axilite_A_pre  <= {pADDR_WIDTH{1'b0}};
+                        axilite_Di_pre <= {pDATA_WIDTH{1'b0}};
+                        axilite_rr     <= axilite_rr;
+                    end else begin
+                        axilite_fsm    <= AXILITE_FSM_WREADY;
+                        axilite_A_pre  <= {pADDR_WIDTH{1'b0}};
+                        axilite_Di_pre <= axilite_Di;
+                        axilite_rr     <= axilite_rr;
+                    end
+                end                    
                 AXILITE_FSM_ARREADY: begin
                     if (rready) begin
-                        axilite_fsm <= AXILITE_FSM_RREADY;
-                        axilite_A   <= axilite_A;
-                        axilite_rr  <= axilite_rr;
+                        axilite_fsm    <= AXILITE_FSM_RREADY;
+                        axilite_A_pre  <= axilite_A;
+                        axilite_Di_pre <= {pDATA_WIDTH{1'b0}};
+                        axilite_rr     <= axilite_rr;
                     end else begin
-                        axilite_fsm <= AXILITE_FSM_ARREADY;
-                        axilite_A   <= axilite_A;
-                        axilite_rr  <= axilite_rr;
+                        axilite_fsm    <= AXILITE_FSM_ARREADY;
+                        axilite_A_pre  <= axilite_A;
+                        axilite_Di_pre <= {pDATA_WIDTH{1'b0}};
+                        axilite_rr     <= axilite_rr;
                     end
                 end
                 AXILITE_FSM_RREADY: begin
-                    axilite_fsm <= AXILITE_FSM_IDLE;
-                    axilite_A   <= {pADDR_WIDTH{1'b0}};
-                    axilite_rr  <= axilite_rr;
+                    axilite_fsm    <= AXILITE_FSM_IDLE;
+                    axilite_A_pre  <= {pADDR_WIDTH{1'b0}};
+                    axilite_Di_pre <= {pDATA_WIDTH{1'b0}};
+                    axilite_rr     <= axilite_rr;
                 end
                 default: begin
-                    axilite_fsm <= AXILITE_FSM_IDLE;
-                    axilite_A   <= {pADDR_WIDTH{1'b0}};
-                    axilite_rr  <= 1'b0;
+                    axilite_fsm    <= AXILITE_FSM_IDLE;
+                    axilite_A_pre  <= {pADDR_WIDTH{1'b0}};
+                    axilite_Di_pre <= {pDATA_WIDTH{1'b0}};
+                    axilite_rr     <= 1'b0;
                 end
             endcase
         end
@@ -437,34 +470,36 @@ module fir
                               {pDATA_WIDTH{axilite_num                                }} & num_Do              |                          
                               {pDATA_WIDTH{axilite_tap & (~ap_reg[0] & ~axistream_tap)}} & tap_Do              |
                               {pDATA_WIDTH{axilite_tap & ( ap_reg[0] |  axistream_tap)}} & {pDATA_WIDTH{1'b1}};
+    assign axilite_A        = (axilite_fsm == AXILITE_FSM_WREADY) ? awaddr         : axilite_A_pre;
+    assign axilite_Di       = (axilite_fsm == AXILITE_FSM_WREADY) ? axilite_Di_pre : wdata;
 
     assign axistream_active = (axistream_fsm != AXISTREAM_FSM_RESET) & (axistream_fsm != AXISTREAM_FSM_IDLE);
     assign axistream_ap     = (axistream_fsm == AXISTREAM_FSM_IDLE ) & ~axilite_ap & ap_reg[0] & ss_tvalid | (axistream_fsm == AXISTREAM_FSM_OUT) & axistream_last & sm_tready;
     assign axistream_tap    = (axistream_fsm == AXISTREAM_FSM_IDLE ) & ~axilite_ap & ap_reg[0] & ss_tvalid | axistream_active;
     assign axistream_tap_A  = (axistream_fsm == AXISTREAM_FSM_IDLE | axistream_fsm == AXISTREAM_FSM_INIT) ? {pADDR_WIDTH{1'b0}} : (axistream_A << 2);
 
-    assign awready          = (axilite_fsm == AXILITE_FSM_IDLE   ) & awvalid & ~(arvalid & axilite_rr);
-    assign wready           = (axilite_fsm == AXILITE_FSM_AWREADY);
-    assign arready          = (axilite_fsm == AXILITE_FSM_IDLE   ) & arvalid & ~(awvalid & ~axilite_rr);
+    assign awready          = (axilite_fsm == AXILITE_FSM_IDLE   ) &  awvalid &          ~(arvalid & axilite_rr) | (axilite_fsm == AXILITE_FSM_WREADY );
+    assign wready           = (axilite_fsm == AXILITE_FSM_IDLE   ) & ~awvalid & wvalid & ~(arvalid & axilite_rr) | (axilite_fsm == AXILITE_FSM_AWREADY);
+    assign arready          = (axilite_fsm == AXILITE_FSM_IDLE   ) &  arvalid & ~((awvalid | wvalid) & ~axilite_rr);
     assign rvalid           = (axilite_fsm == AXILITE_FSM_RREADY );
     assign rdata            = {pDATA_WIDTH{rvalid}} & axilite_Do;
 
-    assign ap_WE            = axilite_ap & (wready & wvalid)          | axistream_ap;
-    assign ap_EN            = axilite_ap & (wready & wvalid | rvalid) | axistream_ap;
-    assign ap_Di            = {3{axilite_ap & ~axistream_ap}} & {(ap_reg[2] & ~wdata[0]), 1'b0, (ap_reg[2] & wdata[0])} | 
+    assign ap_WE            = axilite_ap & ((axilite_fsm == AXILITE_FSM_AWREADY) & wvalid | (axilite_fsm == AXILITE_FSM_WREADY) & awvalid         ) | axistream_ap;
+    assign ap_EN            = axilite_ap & ((axilite_fsm == AXILITE_FSM_AWREADY) & wvalid | (axilite_fsm == AXILITE_FSM_WREADY) & awvalid | rvalid) | axistream_ap;
+    assign ap_Di            = {3{axilite_ap & ~axistream_ap}} & {(ap_reg[2] & ~axilite_Di[0]), 1'b0, (ap_reg[2] & axilite_Di[0])} | 
                               {3{              axistream_ap}} & {{2{sm_tlast}}, 1'b0};
 
-    assign len_WE           = {4{axilite_len & (wready & wvalid)}} & we_sel;
-    assign len_EN           = axilite_len & (wready & wvalid | rvalid);
-    assign len_Di           = wdata;
+    assign len_WE           = {4{axilite_len & ((axilite_fsm == AXILITE_FSM_AWREADY) & wvalid | (axilite_fsm == AXILITE_FSM_WREADY) & awvalid)}} & we_sel;
+    assign len_EN           = axilite_len    & ((axilite_fsm == AXILITE_FSM_AWREADY) & wvalid | (axilite_fsm == AXILITE_FSM_WREADY) & awvalid | rvalid);
+    assign len_Di           = axilite_Di;
 
-    assign num_WE           = {4{axilite_num & (wready & wvalid)}} & we_sel;
-    assign num_EN           = axilite_num & (wready & wvalid | rvalid);
-    assign num_Di           = wdata;
+    assign num_WE           = {4{axilite_num & ((axilite_fsm == AXILITE_FSM_AWREADY) & wvalid | (axilite_fsm == AXILITE_FSM_WREADY) & awvalid)}} & we_sel;
+    assign num_EN           = axilite_num    & ((axilite_fsm == AXILITE_FSM_AWREADY) & wvalid | (axilite_fsm == AXILITE_FSM_WREADY) & awvalid | rvalid);
+    assign num_Di           = axilite_Di;
 
-    assign tap_WE           = {4{axilite_tap & (wready & wvalid) & (~ap_reg[0] & ~axistream_tap)}} & we_sel;
-    assign tap_EN           = axilite_tap & (wready & wvalid | rvalid) | axistream_tap;
-    assign tap_Di           = wdata;
+    assign tap_WE           = {4{axilite_tap & ((axilite_fsm == AXILITE_FSM_AWREADY) & wvalid | (axilite_fsm == AXILITE_FSM_WREADY) & awvalid) & (~ap_reg[0] & ~axistream_tap)}} & we_sel;
+    assign tap_EN           = axilite_tap    & ((axilite_fsm == AXILITE_FSM_AWREADY) & wvalid | (axilite_fsm == AXILITE_FSM_WREADY) & awvalid | rvalid) | axistream_tap;
+    assign tap_Di           = axilite_Di;
     assign tap_A            = {pADDR_WIDTH{axilite_tap & (~ap_reg[0] & ~axistream_tap)}} & (axilite_A - {{pADDR_WIDTH-8{1'b0}},8'h40}) |
                               {pADDR_WIDTH{axistream_tap                              }} & axistream_tap_A;
 
