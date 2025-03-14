@@ -7230,3 +7230,33 @@ The latency is       26240 cycles
 [PASS] [Pattern        570] Golden answer:      718019, Your answer:      718019
 [PASS] [Pattern        571] Golden answer:      946132, Your answer:      946132
 [PASS] [Pattern        572] Golden answer:     -669134, Your answer:     -669134
+[PASS] [Pattern        573] Golden answer:    -1018107, Your answer:    -1018107
+[PASS] [Pattern        574] Golden answer:    -3561670, Your answer:    -3561670
+[PASS] [Pattern        575] Golden answer:      728706, Your answer:      728706
+[PASS] [Pattern        576] Golden answer:     -980566, Your answer:     -980566
+[PASS] [Pattern        577] Golden answer:     -363672, Your answer:     -363672
+[PASS] [Pattern        578] Golden answer:      992711, Your answer:      992711
+[PASS] [Pattern        579] Golden answer:    -1130513, Your answer:    -1130513
+[PASS] [Pattern        580] Golden answer:     -332195, Your answer:     -332195
+[PASS] [Pattern        581] Golden answer:    -1610295, Your answer:    -1610295
+[PASS] [Pattern        582] Golden answer:      762647, Your answer:      762647
+[PASS] [Pattern        583] Golden answer:     -834447, Your answer:     -834447
+[PASS] [Pattern        584] Golden answer:      525723, Your answer:      525723
+[PASS] [Pattern        585] Golden answer:     2321944, Your answer:     2321944
+[PASS] [Pattern        586] Golden answer:     -956031, Your answer:     -956031
+[PASS] [Pattern        587] Golden answer:     -264979, Your answer:     -264979
+[PASS] [Pattern        588] Golden answer:    -1319405, Your answer:    -1319405
+[PASS] [Pattern        589] Golden answer:      285855, Your answer:      285855
+[PASS] [Pattern        590] Golden answer:      894451, Your answer:      894451
+[PASS] [Pattern        591] Golden answer:     -938942, Your answer:     -938942
+[PASS] [Pattern        592] Golden answer:      131361, Your answer:      131361
+[PASS] [Pattern        593] Golden answer:       55703, Your answer:       55703
+[PASS] [Pattern        594] Golden answer:     -284480, Your answer:     -284480
+[PASS] [Pattern        595] Golden answer:    -2339906, Your answer:    -2339906
+[PASS] [Pattern        596] Golden answer:      939728, Your answer:      939728
+[PASS] [Pattern        597] Golden answer:     1837443, Your answer:     1837443
+[PASS] [Pattern        598] Golden answer:    -2306182, Your answer:    -2306182
+[PASS] [Pattern        599] Golden answer:     -643815, Your answer:     -643815
+---------------------------------------------
+-----------Congratulations! Pass-------------
+$finish called at time : 799985 ns : File "/home/ubuntu/Desktop/EESM6000C/lab3_2025/lab3_2025.srcs/sim_1/new/fir_tb.v" Line 268
