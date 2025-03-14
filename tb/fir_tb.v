@@ -183,7 +183,9 @@ module fir_tb
     reg fir_done;
     reg ap_or_tap;
     reg tap_rd_wr;
-    integer latency,filter_latency,i,f,k,l;
+    reg latency_enable;
+    reg throughput_enable;
+    integer latency,throughput,i,f,k,l;
     integer delay_axis_in_sel,   delay_axis_out_sel;
     integer delay_axis_in_short, delay_axis_out_short, delay_write_addr, delay_read_addr;
     integer delay_axis_in_long,  delay_axis_out_long,  delay_write_data, delay_read_data;
@@ -196,6 +198,14 @@ module fir_tb
         error = 0;
         ss_tvalid = 0;
         ss_tlast = 0;
+        latency = 0;
+        throughput = 0;
+        fir_done = 0;
+        sm_tready = 0;
+        ap_or_tap = 0;
+        tap_rd_wr = 0;
+        latency_enable = 0;
+        throughput_enable = 0;
         while (!axis_rst_n | !load_done) @(posedge axis_clk) begin
             $display("Waiting for data to be loaded and reset done...");
         end
@@ -224,7 +234,7 @@ module fir_tb
             $display(" Start FIR, Round %d", (f + 1));
             @(posedge axis_clk) config_write(12'h00, 32'h0000_0001);    // ap_start = 1
             latency = 0;
-            filter_latency = 0;
+            throughput = 0;
             fir_done = 0;
             sm_tready = 0;
             ap_or_tap = 0;
@@ -246,7 +256,7 @@ module fir_tb
                     latency_count();
                 end
                 begin
-                    filter_latency_count();
+                    throughput_count();
                 end
             join
             $display("The latency is %d cycles", latency);
@@ -289,7 +299,7 @@ module fir_tb
             $display("----Start the data output(AXI-Stream)----");
             for(l=0;l < data_length;l=l+1) begin
                 delay_axis_out_short = $urandom_range(0,5);
-                delay_axis_out_long  = $urandom_range(0,2) * filter_latency;
+                delay_axis_out_long  = $urandom_range(0,2) * throughput;
                 delay_axis_out_sel   = ($urandom % 2) ? delay_axis_out_short : delay_axis_out_long;
                 @(posedge axis_clk) 
                 #(delay_axis_out_sel * 10) sm_tready <= 1;
@@ -298,7 +308,7 @@ module fir_tb
                 sm_tready <= 0;
                 Do_list[l] <= sm_tdata;
                 $display("AXI-Stream outputting data %d...", l);
-                $display("The throughput is %d cycles", filter_latency);
+                $display("The throughput is %d cycles", throughput);
             end
             wait(fir_done == 1);
             $display("------End the data output(AXI-Stream)------");
@@ -384,7 +394,6 @@ module fir_tb
         end
     endtask
 
-    reg latency_enable;
     task latency_count;
         begin
             while(fir_done == 0) @(posedge axis_clk) begin
@@ -405,22 +414,21 @@ module fir_tb
         end
     endtask
 
-    reg filter_latency_enable;
-    task filter_latency_count;
+    task throughput_count;
         begin
             while(fir_done == 0) @(posedge axis_clk) begin
-                if (ss_tvalid & ss_tready & !filter_latency_enable) begin
-                    filter_latency_enable <= 1;
-                    filter_latency        <= 1;
-                end else if (sm_tvalid & filter_latency_enable) begin
-                    filter_latency_enable <= 0;
-                    filter_latency        <= filter_latency;
-                end else if (!sm_tvalid & filter_latency_enable) begin
-                    filter_latency_enable <= filter_latency_enable;
-                    filter_latency        <= filter_latency + 1;
+                if (ss_tvalid & ss_tready & !throughput_enable) begin
+                    throughput_enable <= 1;
+                    throughput        <= 1;
+                end else if (sm_tvalid & throughput_enable) begin
+                    throughput_enable <= 0;
+                    throughput        <= throughput;
+                end else if (!sm_tvalid & throughput_enable) begin
+                    throughput_enable <= throughput_enable;
+                    throughput        <= throughput + 1;
                 end else begin
-                    filter_latency_enable <= 0;
-                    filter_latency        <= filter_latency;
+                    throughput_enable <= 0;
+                    throughput        <= throughput;
                 end
             end
         end
@@ -490,7 +498,7 @@ module fir_tb
         input  signed [31:0] in1;
         begin
             delay_axis_in_short = $urandom_range(0,5);
-            delay_axis_in_long  = $urandom_range(0,2) * filter_latency;
+            delay_axis_in_long  = $urandom_range(0,2) * throughput;
             delay_axis_in_sel   = ($urandom % 2) ? delay_axis_in_short : delay_axis_in_long;
             @(posedge axis_clk);
             #(delay_axis_in_sel * 10) ss_tvalid <= 1; ss_tdata <= in1;
