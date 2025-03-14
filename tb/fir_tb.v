@@ -288,7 +288,6 @@ module fir_tb
         begin
             $display("----Start the data output(AXI-Stream)----");
             for(l=0;l < data_length;l=l+1) begin
-            
                 delay_axis_out_short = $urandom_range(0,5);
                 delay_axis_out_long  = $urandom_range(0,2) * filter_latency;
                 delay_axis_out_sel   = ($urandom % 2) ? delay_axis_out_short : delay_axis_out_long;
@@ -345,41 +344,41 @@ module fir_tb
         begin
             $display("----Start the illegal tap sampling(AXI-Lite)----");
             while (fir_done == 0) @(posedge axis_clk) begin
-                if (ap_or_tap == 1) begin
+                if (ap_or_tap & tap_rd_wr) begin
                     delay_read_addr = $urandom_range(0,5);
                     delay_read_data = $urandom_range(0,5);
                     if (!ss_tlast) begin
-                        if (tap_rd_wr == 0) begin
-                            k = $urandom_range(0,`Coef_Num);
-                            fork 
-                                begin
-                                    @(posedge axis_clk);
-                                    #(delay_read_addr * 10) arvalid <= 1; araddr <= 12'h40+4*k;
-                                    @(posedge axis_clk);
-                                    while (!arvalid | (arvalid & !arready)) @(posedge axis_clk);
-                                    arvalid<=0;
-                                    araddr<=0;
+                        k = $urandom_range(0,`Coef_Num);
+                        fork 
+                            begin
+                                @(posedge axis_clk);
+                                #(delay_read_addr * 10) arvalid <= 1; araddr <= 12'h40+4*k;
+                                @(posedge axis_clk);
+                                while (!arvalid | (arvalid & !arready)) @(posedge axis_clk);
+                                arvalid<=0;
+                                araddr<=0;
+                            end
+                            begin
+                                @(posedge axis_clk);
+                                #(delay_read_data * 10) rready <= 1;
+                                while (!rready | (rready & !rvalid)) @(posedge axis_clk);
+                                if (rdata != 32'hffffffff) begin
+                                    $display("Illegal TAP ERROR: exp = %d, rdata = %d", 32'hffffffff, rdata);
+                                    error_coef <= 1;
                                 end
-                                begin
-                                    @(posedge axis_clk);
-                                    #(delay_read_data * 10) rready <= 1;
-                                    while (!rready | (rready & !rvalid)) @(posedge axis_clk);
-                                    if (rdata != 32'hffffffff) begin
-                                        $display("Illegal TAP ERROR: exp = %d, rdata = %d", 32'hffffffff, rdata);
-                                        error_coef <= 1;
-                                    end
-                                    rready<=0;
-                                end
-                            join
-                        end else begin
-                            k = $urandom_range(0,`Coef_Num);
-                            config_write(12'h40+4*k, $urandom_range(0,32'hffffffff));
-                            awvalid <= 0; wvalid <= 0;
-                        end
+                                rready<=0;
+                            end
+                        join
                     end
-                    tap_rd_wr = $urandom();
                     ap_or_tap = $urandom();
-                end
+                end else begin
+                    if (!ss_tlast) begin
+                        k = $urandom_range(0,`Coef_Num);
+                        config_write(12'h40+4*k, $urandom_range(0,32'hffffffff));
+                        awvalid <= 0; wvalid <= 0;
+                    end
+                end 
+                tap_rd_wr = $urandom();
             end
             $display("------End the illegal tap sampling(AXI-Lite)------");
         end
